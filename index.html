@@ -28,6 +28,8 @@
   --ridge: #d3d5de;
   --nes: #b3262c;
   --snes: #5a4ea6;
+  --pce: #c2561a;
+  --gb: #5d7a1c;
   --on-label: #ffffff;
   --focus: #2f63d6;
   --danger: #b3262c;
@@ -39,14 +41,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #14151a; --surface: #1d1e25; --raised: #262732; --ink: #e9eaf0; --muted: #9a9dae;
-    --line: #353745; --ridge: #30323d; --nes: #df5a5f; --snes: #9b8fe6;
+    --line: #353745; --ridge: #30323d; --nes: #df5a5f; --snes: #9b8fe6; --pce: #f08c4e; --gb: #a3c254;
     --on-label: #121216; --focus: #7aa2ff; --danger: #ef6f73; --screen: #000000;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #14151a; --surface: #1d1e25; --raised: #262732; --ink: #e9eaf0; --muted: #9a9dae;
-  --line: #353745; --ridge: #30323d; --nes: #df5a5f; --snes: #9b8fe6;
+  --line: #353745; --ridge: #30323d; --nes: #df5a5f; --snes: #9b8fe6; --pce: #f08c4e; --gb: #a3c254;
   --on-label: #121216; --focus: #7aa2ff; --danger: #ef6f73; --screen: #000000;
   color-scheme: dark;
 }
@@ -65,9 +67,13 @@ button { font: inherit; color: inherit; }
 .brand { display: grid; gap: 2px; min-width: 0; }
 .brand h1 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(28px, 6vw, 40px); line-height: 1.1; letter-spacing: .02em; text-wrap: balance; }
 .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+.brand .systems { display: flex; flex-wrap: wrap; gap: 0 14px; }
+.brand .systems > span { white-space: nowrap; }
 .sys-dot { display: inline-block; width: .5em; height: .5em; margin-inline: .15em; vertical-align: .12em; }
 .sys-dot.nes { background: var(--nes); }
 .sys-dot.snes { background: var(--snes); }
+.sys-dot.pce { background: var(--pce); }
+.sys-dot.gb { background: var(--gb); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .btn {
@@ -105,6 +111,8 @@ button { font: inherit; color: inherit; }
 }
 .cart[data-system="nes"] { --sys: var(--nes); }
 .cart[data-system="snes"] { --sys: var(--snes); }
+.cart[data-system="pce"] { --sys: var(--pce); }
+.cart[data-system="gb"] { --sys: var(--gb); }
 .cart[data-system=""] { --sys: var(--muted); }
 .label .sys { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
 .label .name { font-family: var(--font-display); font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; text-wrap: balance; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
@@ -122,6 +130,7 @@ button { font: inherit; color: inherit; }
 }
 .cart-menu p { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
 .cart-menu .row { display: flex; gap: 6px; }
+.cart-menu .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .cart-menu button { flex: 1; min-height: 36px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
 .cart-menu button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .cart-menu button.danger { color: var(--danger); }
@@ -181,6 +190,8 @@ kbd {
 .player-bar .tag { flex: none; font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .12em; padding: 3px 7px; border-radius: 4px; color: #fff; }
 .player-bar .tag.nes { background: #b3262c; }
 .player-bar .tag.snes { background: #5a4ea6; }
+.player-bar .tag.pce { background: #c2561a; }
+.player-bar .tag.gb { background: #5d7a1c; }
 .stage { position: relative; min-height: 0; }
 #game { position: absolute; inset: 0; }
 body.playing { overflow: hidden; }
@@ -201,14 +212,14 @@ body.playing { overflow: hidden; }
   <header class="top">
     <div class="brand">
       <h1>Cartridge Shelf</h1>
-      <p><span class="sys-dot nes"></span>NES / ファミコン　<span class="sys-dot snes"></span>SNES / スーパーファミコン</p>
+      <p class="systems"><span><span class="sys-dot nes"></span>ファミコン</span><span><span class="sys-dot snes"></span>スーパーファミコン</span><span><span class="sys-dot pce"></span>PCエンジン</span><span><span class="sys-dot gb"></span>ゲームボーイ</span></p>
     </div>
     <div class="actions">
       <button class="btn primary" id="addBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         ROMを追加
       </button>
-      <input id="fileInput" type="file" multiple hidden accept=".nes,.sfc,.smc,.fig,.swc,.zip,.7z,.unf,.unif,.fds">
+      <input id="fileInput" type="file" multiple hidden accept=".nes,.sfc,.smc,.fig,.swc,.pce,.gb,.gbc,.zip,.7z,.unf,.unif,.fds">
     </div>
   </header>
 
@@ -217,6 +228,8 @@ body.playing { overflow: hidden; }
       <button type="button" data-filter="all" aria-pressed="true">すべて</button>
       <button type="button" data-filter="nes" aria-pressed="false">NES</button>
       <button type="button" data-filter="snes" aria-pressed="false">SNES</button>
+      <button type="button" data-filter="pce" aria-pressed="false">PCE</button>
+      <button type="button" data-filter="gb" aria-pressed="false">GB</button>
     </div>
     <span class="count" id="count"></span>
   </div>
@@ -228,13 +241,14 @@ body.playing { overflow: hidden; }
       <h2>Mac のキーボード</h2>
       <dl class="keys">
         <dt><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dt><dd>十字キー</dd>
-        <dt><kbd>X</kbd></dt><dd>A ボタン</dd>
-        <dt><kbd>Z</kbd></dt><dd>B ボタン</dd>
+        <dt><kbd>X</kbd></dt><dd>A ボタン（PCエンジンは I）</dd>
+        <dt><kbd>Z</kbd></dt><dd>B ボタン（PCエンジンは II）</dd>
         <dt><kbd>S</kbd><kbd>A</kbd></dt><dd>X / Y（SNES）</dd>
         <dt><kbd>Q</kbd><kbd>E</kbd></dt><dd>L / R（SNES）</dd>
-        <dt><kbd>Return</kbd><kbd>V</kbd></dt><dd>スタート / セレクト</dd>
+        <dt><kbd>Return</kbd><kbd>V</kbd></dt><dd>スタート（RUN）/ セレクト</dd>
       </dl>
       <p>USB や Bluetooth のゲームパッドも接続するだけで使えます。割り当ては画面下メニューの「コントロール設定」で変更できます。</p>
+      <p>PCエンジンは HuCard（.pce）に対応しています。CD-ROM² のソフトは BIOS が必要なため対象外です。ゲームボーイはカラー（.gbc）も遊べます。</p>
     </section>
     <section>
       <h2>iPhone で遊ぶ</h2>
@@ -249,7 +263,7 @@ body.playing { overflow: hidden; }
       <h2>セーブについて</h2>
       <p>ゲーム内のセーブ（バッテリーバックアップ）は30秒ごとに自動保存されます。どこでもセーブは画面下メニューの保存ボタンから。</p>
       <p>ROM とセーブはこの端末のブラウザ内にだけ保存されます。Mac と iPhone の間では共有されません。</p>
-      <p class="fine">エミュレーション：<a href="https://github.com/EmulatorJS/EmulatorJS" target="_blank" rel="noopener">EmulatorJS</a>（GPL-3.0）、FCEUmm、Snes9x（非商用ライセンス）。ROM は同梱していません。ご自身が所有するソフトのROMをお使いください。</p>
+      <p class="fine">エミュレーション：<a href="https://github.com/EmulatorJS/EmulatorJS" target="_blank" rel="noopener">EmulatorJS</a>（GPL-3.0）、FCEUmm、Snes9x（非商用ライセンス）、Beetle PCE、Gambatte。ROM は同梱していません。ご自身が所有するソフトのROMをお使いください。</p>
     </section>
   </footer>
 </div>
@@ -276,8 +290,13 @@ body.playing { overflow: hidden; }
   const STORE = "roms";
   const NES_EXT = ["nes", "unf", "unif", "fds"];
   const SNES_EXT = ["sfc", "smc", "fig", "swc"];
-  const CORE = { nes: "nes", snes: "snes" };
-  const LABEL = { nes: "NES", snes: "SNES", "": "機種未設定" };
+  const PCE_EXT = ["pce"];
+  const GB_EXT = ["gb", "gbc"];
+  const ROM_EXT = [...NES_EXT, ...SNES_EXT, ...PCE_EXT, ...GB_EXT];
+  const SYSTEMS = ["nes", "snes", "pce", "gb"];
+  const CORE = { nes: "nes", snes: "snes", pce: "pce", gb: "gb" };
+  const LABEL = { nes: "NES", snes: "SNES", pce: "PCE", gb: "GB", "": "機種未設定" };
+  const COLOR = { nes: "#b3262c", snes: "#5a4ea6", pce: "#c2561a", gb: "#5d7a1c" };
 
   const $ = (s) => document.querySelector(s);
   const shelf = $("#shelf");
@@ -344,6 +363,8 @@ body.playing { overflow: hidden; }
     const e = ext(file.name);
     if (NES_EXT.includes(e)) return "nes";
     if (SNES_EXT.includes(e)) return "snes";
+    if (PCE_EXT.includes(e)) return "pce";
+    if (GB_EXT.includes(e)) return "gb";
     const head = new Uint8Array(await file.slice(0, Math.min(file.size, 4)).arrayBuffer());
     if (head[0] === 0x4e && head[1] === 0x45 && head[2] === 0x53 && head[3] === 0x1a) return "nes";
     if (e === "zip" || e === "7z") {
@@ -357,6 +378,8 @@ body.playing { overflow: hidden; }
       }
       if (/\.(sfc|smc|fig|swc)\b/i.test(text)) return "snes";
       if (/\.(nes|unf|unif|fds)\b/i.test(text)) return "nes";
+      if (/\.pce\b/i.test(text)) return "pce";
+      if (/\.(gb|gbc)\b/i.test(text)) return "gb";
     }
     return "";
   }
@@ -383,7 +406,7 @@ body.playing { overflow: hidden; }
       const name = dec.decode(buf.subarray(p + 46, p + 46 + nlen));
       p += 46 + nlen + xlen + clen;
       const e = ext(name);
-      if (!NES_EXT.includes(e) && !SNES_EXT.includes(e)) continue;
+      if (!ROM_EXT.includes(e)) continue;
       const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
       const raw = buf.subarray(start, start + csize);
       let data;
@@ -451,9 +474,9 @@ body.playing { overflow: hidden; }
     el.id = "slot";
     el.innerHTML =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>' +
-      "<strong>" + (isEmpty ? "最初のROMを入れる" : "ROMを追加") + "</strong>" +
+      "<strong>" + (isEmpty ? "ROMを入れる" : "ROMを追加") + "</strong>" +
       "<span>ここにドロップ<br>またはタップで選択</span>" +
-      "<small>.nes .sfc .smc .zip</small>";
+      "<small>.nes .sfc .pce .gb .gbc .zip</small>";
     return el;
   }
   function render() {
@@ -469,8 +492,9 @@ body.playing { overflow: hidden; }
       shelf.appendChild(p);
     }
     document.querySelectorAll(".filters button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === filter)));
-    const n = roms.length, nes = roms.filter((r) => r.system === "nes").length, snes = roms.filter((r) => r.system === "snes").length;
-    $("#count").textContent = n ? (n + " 本　NES " + nes + "・SNES " + snes) : "";
+    const n = roms.length;
+    const per = SYSTEMS.map((k) => [LABEL[k], roms.filter((r) => r.system === k).length]).filter((x) => x[1] > 0);
+    $("#count").textContent = n ? (n + " 本　" + per.map((x) => x[0] + " " + x[1]).join("・")) : "";
   }
   async function refresh() {
     try {
@@ -494,7 +518,7 @@ body.playing { overflow: hidden; }
     const m = document.createElement("div");
     m.className = "cart-menu";
     m.innerHTML =
-      '<p>機種</p><div class="row"><button type="button" data-set="nes">NES</button><button type="button" data-set="snes">SNES</button></div>' +
+      '<p>機種</p><div class="grid"><button type="button" data-set="nes">NES</button><button type="button" data-set="snes">SNES</button><button type="button" data-set="pce">PCE</button><button type="button" data-set="gb">GB</button></div>' +
       '<div class="row"><button type="button" class="danger" data-act="delete">削除</button><button type="button" data-act="close">閉じる</button></div>';
     m.querySelectorAll("[data-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.set === r.system)));
     m.addEventListener("click", async (e) => {
@@ -551,7 +575,7 @@ body.playing { overflow: hidden; }
     window.EJS_pathtodata = EMU_PATH;
     window.EJS_DEBUG_XX = true;            // use the unminified build that ships with this page
     window.EJS_language = "ja-JA";
-    window.EJS_color = rec.system === "nes" ? "#b3262c" : "#5a4ea6";
+    window.EJS_color = COLOR[rec.system];
     window.EJS_backgroundColor = "#000000";
     window.EJS_startOnLoaded = !touch;     // on iPhone the start tap also unlocks sound
     window.EJS_startButtonName = "スタート";

@@ -1,6 +1,7 @@
 """Builds the deployable site into _site/.
 
-Downloads EmulatorJS and the NES (FCEUmm) / SNES (Snes9x) cores from npm,
+Downloads EmulatorJS and the NES (FCEUmm), SNES (Snes9x), PC Engine (Beetle PCE)
+and Game Boy (Gambatte) cores from npm,
 unpacks the cores so no archive worker is needed at runtime, applies two small
 patches to emulator.js, and writes the offline service worker.
 """
@@ -9,7 +10,7 @@ import hashlib, io, json, os, shutil, subprocess, sys, tarfile, tempfile, urllib
 VERSION = "4.2.3"
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "_site")
-CORES = ["fceumm", "snes9x"]
+CORES = ["fceumm", "snes9x", "mednafen_pce", "gambatte"]
 VARIANTS = ["wasm", "legacy-wasm"]
 
 
