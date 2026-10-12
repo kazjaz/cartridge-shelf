@@ -22,6 +22,14 @@ self.addEventListener("fetch", (e) => {
     }
     return;
   }
+  if (e.request.mode === "navigate") {
+    // The page itself: always try the network first so updates arrive on the next open; use the saved copy offline.
+    e.respondWith(fetch(e.request).then((res) => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put("index.html", copy)); }
+      return res;
+    }).catch(() => caches.match("index.html").then((hit) => hit || caches.match("./"))));
+    return;
+  }
   e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || fetch(e.request).then((res) => {
     if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
     return res;
