@@ -434,7 +434,7 @@ body.playing { overflow: hidden; }
           id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
           name: baseName(f.name), fileName: f.name, system, size: f.size,
           added: Date.now(), lastPlayed: 0,
-          data: new Blob([await f.arrayBuffer()], { type: "application/octet-stream" })
+          data: await f.arrayBuffer()
         };
         await dbPut(rec);
         added++;
@@ -547,15 +547,63 @@ body.playing { overflow: hidden; }
     openMenu = m;
   }
 
+  /* ---------- sound unlock (iPhone) ----------
+     iOS only lets a page start sound while handling a tap (touchend/click), but the
+     emulator creates its audio later and tries to resume it on touchstart, which iOS
+     refuses, so the game sat on "Click to resume". We create and unlock the audio
+     context during the cartridge tap and hand that same context to the emulator. */
+  const NativeAC = window.AudioContext || window.webkitAudioContext;
+  let primedAudio = null;
+  function primeAudio() {
+    if (!NativeAC || primedAudio) return;
+    try {
+      primedAudio = new NativeAC();
+      const src = primedAudio.createBufferSource();
+      src.buffer = primedAudio.createBuffer(1, 1, 22050);
+      src.connect(primedAudio.destination);
+      src.start(0);
+      if (primedAudio.state !== "running") primedAudio.resume().catch(() => {});
+    } catch (e) { primedAudio = null; }
+  }
+  let audioHooked = false;
+  function hookAudio() {
+    if (!NativeAC || audioHooked) return;
+    audioHooked = true;
+    const contexts = [];
+    function SharedAudioContext(options) {
+      let c = primedAudio;
+      primedAudio = null;
+      if (!c) c = options ? new NativeAC(options) : new NativeAC();
+      contexts.push(c);
+      return c;
+    }
+    SharedAudioContext.prototype = NativeAC.prototype;
+    window.AudioContext = SharedAudioContext;
+    if (window.webkitAudioContext) window.webkitAudioContext = SharedAudioContext;
+    const wake = () => contexts.forEach((c) => { if (c.state === "suspended" || c.state === "interrupted") c.resume().catch(() => {}); });
+    ["touchend", "click", "keydown"].forEach((t) => document.addEventListener(t, wake, true));
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
+  }
+
   /* ---------- play ---------- */
   async function play(id) {
     if (playing) return;
-    const rec = await dbGet(id);
-    if (!rec) return;
-    if (!rec.system) { toast("先に「…」メニューから機種を選んでください"); return; }
+    primeAudio();   // must run inside the tap, before any await
     playing = true;
+    const rec = await dbGet(id);
+    if (!rec) { playing = false; return; }
+    if (!rec.system) { playing = false; toast("先に「…」メニューから機種を選んでください"); return; }
+    let bytes = null;
+    try { bytes = rec.data instanceof Blob ? await rec.data.arrayBuffer() : rec.data; } catch (e) { bytes = null; }
+    if (!bytes || !bytes.byteLength) {
+      playing = false;
+      toast("このROMを読み込めませんでした。「…」から削除して、もう一度追加してください。", 6000);
+      return;
+    }
+    rec.data = bytes;              // older entries were stored as Blob; keep plain bytes from now on
     rec.lastPlayed = Date.now();
     dbPut(rec).catch(() => {});
+    hookAudio();
 
     $("#nowName").textContent = rec.name;
     const tag = $("#nowTag");
@@ -566,18 +614,17 @@ body.playing { overflow: hidden; }
     document.body.classList.add("playing");
     window.scrollTo(0, 0);
 
-    const touch = matchMedia("(pointer: coarse)").matches;
     const P = (k, v) => ({ value: k, value2: v });
     window.EJS_player = "#game";
     window.EJS_core = CORE[rec.system];
-    window.EJS_gameUrl = new File([rec.data], rec.fileName || (rec.name + "." + rec.system));
+    window.EJS_gameUrl = new File([bytes], rec.fileName || (rec.name + "." + rec.system));
     window.EJS_gameName = rec.name;
     window.EJS_pathtodata = EMU_PATH;
     window.EJS_DEBUG_XX = true;            // use the unminified build that ships with this page
     window.EJS_language = "ja-JA";
     window.EJS_color = COLOR[rec.system];
     window.EJS_backgroundColor = "#000000";
-    window.EJS_startOnLoaded = !touch;     // on iPhone the start tap also unlocks sound
+    window.EJS_startOnLoaded = true;       // sound is already unlocked by the cartridge tap
     window.EJS_startButtonName = "スタート";
     window.EJS_Buttons = { exitEmulation: false, netplay: false, cacheManager: false };
     window.EJS_defaultOptions = { "save-state-location": "browser", "save-save-interval": "30" };
