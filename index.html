@@ -247,7 +247,7 @@ body.playing { overflow: hidden; }
         <dt><kbd>Q</kbd><kbd>E</kbd></dt><dd>L / R（SNES）</dd>
         <dt><kbd>Return</kbd><kbd>V</kbd></dt><dd>スタート（RUN）/ セレクト</dd>
       </dl>
-      <p>USB や Bluetooth のゲームパッドも接続するだけで使えます。割り当ては画面下メニューの「コントロール設定」で変更できます。</p>
+      <p>USB や Bluetooth のゲームパッドも使えます。ゲームを開いたあと、ボタンを1回押すと認識されます。左スティックでも十字キーの操作ができます。割り当ては画面下メニューの「コントロール設定」で変更できます。</p>
       <p>PCエンジンは HuCard（.pce）に対応しています。CD-ROM² のソフトは BIOS が必要なため対象外です。ゲームボーイはカラー（.gbc）も遊べます。</p>
     </section>
     <section>
@@ -621,6 +621,53 @@ body.playing { overflow: hidden; }
     document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
   }
 
+  /* ---------- game controllers ----------
+     Safari converts most controllers to the standard button layout; Chrome reads some of them
+     raw, so their D-pad arrives as a single "hat" value the emulator can't use. We present every
+     controller in the standard layout: a hat switch becomes D-pad buttons, and the left stick
+     also works as a D-pad (none of these systems use analog input). */
+  const nativeGetGamepads = navigator.getGamepads ? navigator.getGamepads.bind(navigator) : null;
+  const hatAxes = new Map();   // gamepad id -> Set of axis numbers seen resting beyond ±1 (hat switch)
+  function hatDirections(v) {
+    if (typeof v !== "number" || v < -1.05 || v > 1.05) return null;
+    const step = Math.round((v + 1) / (2 / 7));   // 0 = up, then clockwise in eighths
+    return { up: step === 0 || step === 1 || step === 7, right: step >= 1 && step <= 3, down: step >= 3 && step <= 5, left: step >= 5 && step <= 7 };
+  }
+  function standardPad(g) {
+    const buttons = Array.from(g.buttons, (b) => ({ pressed: !!b.pressed, touched: !!b.pressed, value: b.value || (b.pressed ? 1 : 0) }));
+    while (buttons.length < 17) buttons.push({ pressed: false, touched: false, value: 0 });
+    const axes = Array.from(g.axes);
+    const dir = { up: false, down: false, left: false, right: false };
+    if (g.mapping !== "standard") {
+      let seen = hatAxes.get(g.id);
+      if (!seen) hatAxes.set(g.id, seen = new Set());
+      axes.forEach((v, i) => { if (Math.abs(v) > 1.05) seen.add(i); });
+      seen.forEach((i) => {
+        const d = hatDirections(axes[i]);
+        if (d) { dir.up ||= d.up; dir.down ||= d.down; dir.left ||= d.left; dir.right ||= d.right; }
+        axes[i] = 0;
+      });
+    }
+    if (axes[0] < -0.5) dir.left = true;
+    if (axes[0] > 0.5) dir.right = true;
+    if (axes[1] < -0.5) dir.up = true;
+    if (axes[1] > 0.5) dir.down = true;
+    [["up", 12], ["down", 13], ["left", 14], ["right", 15]].forEach(([k, i]) => {
+      if (dir[k]) buttons[i] = { pressed: true, touched: true, value: 1 };
+    });
+    return { id: g.id, index: g.index, mapping: "standard", connected: g.connected, timestamp: g.timestamp, axes, buttons };
+  }
+  let padsHooked = false;
+  function hookGamepads() {
+    if (!nativeGetGamepads || padsHooked) return;
+    padsHooked = true;
+    navigator.getGamepads = () => Array.from(nativeGetGamepads() || [], (g) => (g ? standardPad(g) : null));
+  }
+  window.addEventListener("gamepadconnected", (e) => {
+    const name = (e.gamepad.id || "").replace(/\s*\(.*$/, "").trim() || "コントローラー";
+    toast("コントローラー「" + name + "」を認識しました", 2400);
+  });
+
   /* ---------- play ---------- */
   async function play(id) {
     if (playing) return;
@@ -640,6 +687,7 @@ body.playing { overflow: hidden; }
     rec.lastPlayed = Date.now();
     dbPut(rec).catch(() => {});
     hookAudio();
+    hookGamepads();
 
     $("#nowName").textContent = rec.name;
     const tag = $("#nowTag");

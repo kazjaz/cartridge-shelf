@@ -96,6 +96,14 @@ def patch_emulator(path):
         # EJS_DEBUG_XX is only used to load the uncompressed scripts; keep logging/verbose mode off.
         ('        this.debug = (window.EJS_DEBUG_XX === true);\n',
          '        this.debug = (window.EJS_DEBUG_XX === true) && (window.EJS_VERBOSE === true);\n'),
+        # Gamepads: look them up by their number, not by position in the list (Chrome may number a pad 1, 2, ...).
+        ('                    this.gamepadSelection[i] = this.gamepad.gamepads[e.gamepadIndex].id + "_" + this.gamepad.gamepads[e.gamepadIndex].index;',
+         '                    this.gamepadSelection[i] = (this.gamepad.gamepads.find((g) => g && g.index === e.gamepadIndex) || {}).id + "_" + e.gamepadIndex;'),
+        ('        const gamepadIndex = this.gamepadSelection.indexOf(this.gamepad.gamepads[e.gamepadIndex].id + "_" + this.gamepad.gamepads[e.gamepadIndex].index);',
+         '        const eventPad = this.gamepad.gamepads.find((g) => g && g.index === e.gamepadIndex);\n        if (!eventPad) return;\n        const gamepadIndex = this.gamepadSelection.indexOf(eventPad.id + "_" + eventPad.index);'),
+        # Gamepads already active at start were never assigned to a player; announce them once listeners exist.
+        ('        this.gamepad.on("buttonup", this.gamepadEvent.bind(this));\n    }',
+         '        this.gamepad.on("buttonup", this.gamepadEvent.bind(this));\n        // Cartridge Shelf: controllers already active when the emulator starts were detected before the\n        // listeners above existed, so they were never assigned to a player. Announce them now.\n        this.gamepad.gamepads.forEach((g) => { if (g) this.gamepad.dispatchEvent("connected", { gamepadIndex: g.index }); });\n    }'),
     ]
     for a, b in rep:
         if a not in s:
