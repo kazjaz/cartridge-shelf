@@ -565,6 +565,41 @@ body.playing { overflow: hidden; }
       if (primedAudio.state !== "running") primedAudio.resume().catch(() => {});
     } catch (e) { primedAudio = null; }
   }
+  /* Memory: the emulator's sound code makes a new AudioBuffer and a new source node for every
+     ~20 ms chunk and never disconnects finished nodes. Safari frees these late (or keeps them
+     while connected), so memory climbed until Safari reloaded the page. We disconnect each node
+     when it finishes and recycle its buffer for the next chunk of the same size. */
+  const audioStats = window.__csAudio = { newBuffers: 0, reusedBuffers: 0, tidiedNodes: 0 };
+  function tidyAudio(c) {
+    if (!c || c.__csTidy) return c;
+    c.__csTidy = true;
+    const pool = new Map();
+    const keyOf = (ch, len, rate) => ch + ":" + len + ":" + rate;
+    const nativeCreateBuffer = c.createBuffer.bind(c);
+    c.createBuffer = (ch, len, rate) => {
+      const free = pool.get(keyOf(ch, len, rate));
+      if (free && free.length) { audioStats.reusedBuffers++; return free.pop(); }
+      audioStats.newBuffers++;
+      return nativeCreateBuffer(ch, len, rate);
+    };
+    const nativeCreateSource = c.createBufferSource.bind(c);
+    c.createBufferSource = () => {
+      const node = nativeCreateSource();
+      node.addEventListener("ended", () => {
+        const buf = node.buffer;
+        try { node.disconnect(); } catch (e) {}
+        audioStats.tidiedNodes++;
+        if (buf && !node.loop) {
+          const k = keyOf(buf.numberOfChannels, buf.length, buf.sampleRate);
+          let free = pool.get(k);
+          if (!free) pool.set(k, free = []);
+          if (free.length < 32 && !free.includes(buf)) free.push(buf);
+        }
+      });
+      return node;
+    };
+    return c;
+  }
   let audioHooked = false;
   function hookAudio() {
     if (!NativeAC || audioHooked) return;
@@ -574,6 +609,7 @@ body.playing { overflow: hidden; }
       let c = primedAudio;
       primedAudio = null;
       if (!c) c = options ? new NativeAC(options) : new NativeAC();
+      tidyAudio(c);
       contexts.push(c);
       return c;
     }

@@ -93,6 +93,9 @@ def patch_emulator(path):
         document.body.appendChild(script);'''),
         ('            totalDependencies: 0,\n            locateFile: function (fileName) {',
          '            totalDependencies: 0,\n            wasmBinary: wasmData,\n            locateFile: function (fileName) {'),
+        # EJS_DEBUG_XX is only used to load the uncompressed scripts; keep logging/verbose mode off.
+        ('        this.debug = (window.EJS_DEBUG_XX === true);\n',
+         '        this.debug = (window.EJS_DEBUG_XX === true) && (window.EJS_VERBOSE === true);\n'),
     ]
     for a, b in rep:
         if a not in s:
