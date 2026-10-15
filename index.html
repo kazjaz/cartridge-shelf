@@ -709,6 +709,7 @@ body.playing { overflow: hidden; }
     window.EJS_color = COLOR[rec.system];
     window.EJS_backgroundColor = "#000000";
     window.EJS_startOnLoaded = true;       // sound is already unlocked by the cartridge tap
+    window.EJS_touchUI = matchMedia("(pointer: coarse)").matches;   // show the on-screen controller on touch screens
     window.EJS_startButtonName = "スタート";
     window.EJS_Buttons = { exitEmulation: false, netplay: false, cacheManager: false };
     window.EJS_defaultOptions = { "save-state-location": "browser", "save-save-interval": "30" };

@@ -48,6 +48,54 @@ def extract(t, dest):
         t.extractall(dest)
 
 
+# --- Safari / iOS memory fix -------------------------------------------------------------------
+# WebKit's optimizing WebAssembly compiler (OMG) uses gigabytes of memory on some of these cores'
+# larger functions, so Safari reloads the page after a few minutes. WebKit never sends a function
+# larger than 100,000 bytes to that compiler, so we pad every function over 10 KB with NOP
+# instructions to just above that limit. They still run in WebKit's baseline compiler, at full
+# speed for these consoles. The padding compresses away when GitHub Pages serves the file gzipped.
+def _leb(b, i):
+    r = s = 0
+    while True:
+        x = b[i]; i += 1; r |= (x & 0x7f) << s; s += 7
+        if x < 0x80:
+            return r, i
+
+
+def _enc(n):
+    out = bytearray()
+    while True:
+        x = n & 0x7f; n >>= 7
+        if n:
+            out.append(x | 0x80)
+        else:
+            out.append(x)
+            return bytes(out)
+
+
+def pad_wasm(path, threshold=10000, target=110000):
+    b = open(path, "rb").read()
+    assert b[:4] == b"\0asm"
+    out = bytearray(b[:8]); i = 8; padded = 0
+    while i < len(b):
+        sid = b[i]; size, j = _leb(b, i + 1); body = b[j:j + size]; i = j + size
+        if sid == 10:
+            n, k = _leb(body, 0); entries = bytearray(_enc(n))
+            for _ in range(n):
+                fsz, k = _leb(body, k); fb = body[k:k + fsz]; k += fsz
+                if threshold < fsz < target:
+                    nl, p = _leb(fb, 0)
+                    for _ in range(nl):
+                        _, p = _leb(fb, p); p += 1
+                    fb = fb[:p] + b"\x01" * (target - fsz) + fb[p:]
+                    padded += 1
+                entries += _enc(len(fb)) + fb
+            body = bytes(entries)
+        out.append(sid); out += _enc(len(body)) + body
+    open(path, "wb").write(bytes(out))
+    return padded
+
+
 def patch_emulator(path):
     s = open(path, encoding="utf-8").read()
     rep = [
@@ -104,6 +152,16 @@ def patch_emulator(path):
         # Gamepads already active at start were never assigned to a player; announce them once listeners exist.
         ('        this.gamepad.on("buttonup", this.gamepadEvent.bind(this));\n    }',
          '        this.gamepad.on("buttonup", this.gamepadEvent.bind(this));\n        // Cartridge Shelf: controllers already active when the emulator starts were detected before the\n        // listeners above existed, so they were never assigned to a player. Announce them now.\n        this.gamepad.gamepads.forEach((g) => { if (g) this.gamepad.dispatchEvent("connected", { gamepadIndex: g.index }); });\n    }'),
+        # Show the on-screen controller on touch screens even when the game starts automatically.
+        ('        this.touch = false;\n',
+         '        this.touch = (window.EJS_touchUI === true);\n'),
+        # On-screen controller: a delayed hide during screen setup could remove it right after the game started.
+        ('            if (this.touch) {\n                this.virtualGamepad.style.display = "";\n            }\n            this.handleResize();',
+         '            if (this.touch) {\n                this.virtualGamepadWanted = true;\n                this.virtualGamepad.style.display = "";\n            }\n            this.handleResize();'),
+        ('        this.toggleVirtualGamepad = (show) => {\n            this.virtualGamepad.style.display = show ? "" : "none";',
+         '        this.toggleVirtualGamepad = (show) => {\n            this.virtualGamepadWanted = !!show;\n            this.virtualGamepad.style.display = show ? "" : "none";'),
+        ('                setTimeout(() => {\n                    this.virtualGamepad.style.display = "none";\n                    this.virtualGamepad.style.opacity = "";\n                }, 250)',
+         '                setTimeout(() => {\n                    // Cartridge Shelf: don\'t hide the controller if it was asked to show meanwhile.\n                    if (!this.virtualGamepadWanted) this.virtualGamepad.style.display = "none";\n                    this.virtualGamepad.style.opacity = "";\n                }, 250)'),
     ]
     for a, b in rep:
         if a not in s:
@@ -155,6 +213,7 @@ def main():
                     shutil.copy(src, os.path.join(dst, "core.js"))
                 elif f.endswith("_libretro.wasm"):
                     shutil.copy(src, os.path.join(dst, "core.wasm"))
+                    print(name, "padded", pad_wasm(os.path.join(dst, "core.wasm")), "functions")
                 elif f in ("core.json", "build.json", "license.txt"):
                     shutil.copy(src, dst)
 
