@@ -261,7 +261,8 @@ body.playing { overflow: hidden; }
     </section>
     <section>
       <h2>セーブについて</h2>
-      <p>ゲーム内のセーブ（バッテリーバックアップ）は30秒ごとに自動保存されます。どこでもセーブは画面下メニューの保存ボタンから。</p>
+      <p>遊んでいた場面は自動で保存され、次にそのカートリッジを開くと続きから再開します。最初から遊ぶときは、カートリッジの「…」→「最初から遊ぶ」。</p>
+      <p>ゲーム内のセーブは30秒ごとに自動保存されます。好きな場面での手動セーブは画面下メニューの保存ボタンから。</p>
       <p>ROM とセーブはこの端末のブラウザ内にだけ保存されます。Mac と iPhone の間では共有されません。</p>
       <p class="fine">エミュレーション：<a href="https://github.com/EmulatorJS/EmulatorJS" target="_blank" rel="noopener">EmulatorJS</a>（GPL-3.0）、FCEUmm、Snes9x（非商用ライセンス）、Beetle PCE、Gambatte。ROM は同梱していません。ご自身が所有するソフトのROMをお使いください。</p>
     </section>
@@ -288,6 +289,7 @@ body.playing { overflow: hidden; }
   const EMU_PATH = "emu/";
   const DB_NAME = "cartridge-shelf";
   const STORE = "roms";
+  const RESUME = "resume";   // automatic save state per ROM: where you left off
   const NES_EXT = ["nes", "unf", "unif", "fds"];
   const SNES_EXT = ["sfc", "smc", "fig", "swc"];
   const PCE_EXT = ["pce"];
@@ -313,10 +315,11 @@ body.playing { overflow: hidden; }
     if (!dbPromise) {
       dbPromise = new Promise((resolve, reject) => {
         let req;
-        try { req = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
+        try { req = indexedDB.open(DB_NAME, 2); } catch (e) { reject(e); return; }
         req.onupgradeneeded = () => {
           const d = req.result;
           if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: "id" });
+          if (!d.objectStoreNames.contains(RESUME)) d.createObjectStore(RESUME, { keyPath: "id" });
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -324,11 +327,11 @@ body.playing { overflow: hidden; }
     }
     return dbPromise;
   }
-  async function tx(mode, fn) {
+  async function tx(mode, fn, store = STORE) {
     const d = await db();
     return new Promise((resolve, reject) => {
-      const t = d.transaction(STORE, mode);
-      const s = t.objectStore(STORE);
+      const t = d.transaction(store, mode);
+      const s = t.objectStore(store);
       let result;
       const r = fn(s);
       if (r) r.onsuccess = () => { result = r.result; };
@@ -341,6 +344,10 @@ body.playing { overflow: hidden; }
   const dbGet = (id) => tx("readonly", (s) => s.get(id));
   const dbPut = (rec) => tx("readwrite", (s) => s.put(rec));
   const dbDel = (id) => tx("readwrite", (s) => s.delete(id));
+  const resumeGet = (id) => tx("readonly", (s) => s.get(id), RESUME);
+  const resumePut = (rec) => tx("readwrite", (s) => s.put(rec), RESUME);
+  const resumeDel = (id) => tx("readwrite", (s) => s.delete(id), RESUME);
+  const resumeKeys = () => tx("readonly", (s) => s.getAllKeys(), RESUME);
 
   /* ---------- helpers ---------- */
   function toast(msg, ms = 2600) {
@@ -464,7 +471,7 @@ body.playing { overflow: hidden; }
     el.querySelector(".sys").textContent = LABEL[r.system || ""];
     el.querySelector(".name").textContent = r.name;
     el.querySelector(".size").textContent = fmtSize(r.size);
-    el.querySelector(".when").textContent = fmtDate(r.lastPlayed);
+    el.querySelector(".when").textContent = (r.resumable ? "続きから・" : "") + fmtDate(r.lastPlayed);
     return el;
   }
   function slotEl(isEmpty) {
@@ -499,7 +506,9 @@ body.playing { overflow: hidden; }
   async function refresh() {
     try {
       const all = await dbAll();
-      roms = (all || []).map(({ data, ...rest }) => rest)
+      let keys = [];
+      try { keys = (await resumeKeys()) || []; } catch (e) {}
+      roms = (all || []).map(({ data, ...rest }) => ({ ...rest, resumable: keys.includes(rest.id) }))
         .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0) || b.added - a.added);
     } catch (e) {
       console.error(e);
@@ -519,6 +528,7 @@ body.playing { overflow: hidden; }
     m.className = "cart-menu";
     m.innerHTML =
       '<p>機種</p><div class="grid"><button type="button" data-set="nes">NES</button><button type="button" data-set="snes">SNES</button><button type="button" data-set="pce">PCE</button><button type="button" data-set="gb">GB</button></div>' +
+      (r.resumable ? '<div class="row"><button type="button" data-act="fresh">最初から遊ぶ</button></div>' : '') +
       '<div class="row"><button type="button" class="danger" data-act="delete">削除</button><button type="button" data-act="close">閉じる</button></div>';
     m.querySelectorAll("[data-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.set === r.system)));
     m.addEventListener("click", async (e) => {
@@ -537,8 +547,12 @@ body.playing { overflow: hidden; }
           return;
         }
         await dbDel(r.id);
+        try { await resumeDel(r.id); } catch (e) {}
         await refresh();
         toast("「" + r.name + "」を棚から外しました");
+      } else if (b.dataset.act === "fresh") {
+        closeMenu();
+        play(r.id, { fresh: true });
       } else {
         closeMenu();
       }
@@ -669,7 +683,8 @@ body.playing { overflow: hidden; }
   });
 
   /* ---------- play ---------- */
-  async function play(id) {
+  let current = null;          // { id, name } of the game being played
+  async function play(id, opts = {}) {
     if (playing) return;
     primeAudio();   // must run inside the tap, before any await
     playing = true;
@@ -684,6 +699,10 @@ body.playing { overflow: hidden; }
       return;
     }
     rec.data = bytes;              // older entries were stored as Blob; keep plain bytes from now on
+    current = { id: rec.id, name: rec.name };
+    let resume = null;
+    if (opts.fresh) { try { await resumeDel(rec.id); } catch (e) {} }
+    else { try { resume = await resumeGet(rec.id); } catch (e) {} }
     rec.lastPlayed = Date.now();
     dbPut(rec).catch(() => {});
     hookAudio();
@@ -725,7 +744,13 @@ body.playing { overflow: hidden; }
       },
       1: {}, 2: {}, 3: {}
     };
-    window.EJS_onGameStart = () => { window.__csStarted = true; };
+    if (resume && resume.state && resume.state.byteLength) window.EJS_loadStateURL = new Uint8Array(resume.state);
+    window.EJS_onGameStart = () => {
+      window.__csStarted = true;
+      if (window.EJS_loadStateURL) toast("前回の続きから再開しました（最初から遊ぶときは棚の「…」→「最初から遊ぶ」）", 4500);
+      clearInterval(autoSaveTimer);
+      autoSaveTimer = setInterval(() => { saveResume(); }, 60000);
+    };
 
     const s = document.createElement("script");
     s.src = EMU_PATH + "loader.js";
@@ -733,14 +758,35 @@ body.playing { overflow: hidden; }
     document.body.appendChild(s);
   }
 
-  function leave() {
+  /* ---------- automatic save state ----------
+     The scene is saved when you go back to the shelf, when the app goes to the background
+     (switching apps, locking the phone, closing it from the app switcher) and once a minute,
+     and restored the next time you open the same cartridge. */
+  let autoSaveTimer = null;
+  let saving = null;
+  function saveResume() {
+    const emu = window.EJS_emulator;
+    if (!current || !emu || !emu.started || !emu.gameManager) return Promise.resolve(false);
+    let state;
+    try { state = emu.gameManager.getState(); } catch (e) { return Promise.resolve(false); }
+    if (!state || !state.byteLength) return Promise.resolve(false);
+    const buf = state.buffer.slice(state.byteOffset, state.byteOffset + state.byteLength);
+    saving = resumePut({ id: current.id, state: buf, at: Date.now() }).then(() => true).catch(() => false);
+    return saving;
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden) saveResume(); });
+  window.addEventListener("pagehide", () => { saveResume(); });
+
+  async function leave() {
     const btn = $("#backBtn");
     btn.disabled = true;
+    clearInterval(autoSaveTimer);
     const go = () => { try { location.reload(); } catch (e) { location.href = location.pathname; } };
     const emu = window.EJS_emulator;
     if (emu && emu.started) {
+      toast("続きを保存しています…", 1500);
+      await saveResume();          // must happen before "exit", which resets the game
       try { emu.callEvent("exit"); } catch (e) {}
-      toast("セーブを書き込んでいます…", 1500);
       setTimeout(go, 1300);   // give the core a moment to flush battery saves
     } else {
       go();
